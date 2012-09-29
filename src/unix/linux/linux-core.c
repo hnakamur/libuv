@@ -91,6 +91,13 @@ uint64_t uv_hrtime() {
 }
 
 
+uint64_t uv_realtime() {
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  return (((uint64_t) ts.tv_sec) * NANOSEC + ts.tv_nsec);
+}
+
+
 void uv_loadavg(double avg[3]) {
   struct sysinfo info;
 

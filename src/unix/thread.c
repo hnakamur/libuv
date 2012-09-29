@@ -26,6 +26,8 @@
 #include <assert.h>
 #include <errno.h>
 
+#undef NANOSEC
+#define NANOSEC ((uint64_t) 1e9)
 
 int uv_thread_join(uv_thread_t *tid) {
   if (pthread_join(*tid, NULL))
@@ -258,3 +260,50 @@ int uv_sem_trywait(uv_sem_t* sem) {
 }
 
 #endif /* defined(__APPLE__) && defined(__MACH__) */
+
+void uv_cond_init(uv_cond_t* cond) {
+  if (pthread_cond_init(cond, NULL))
+    abort();
+}
+
+void uv_cond_destroy(uv_cond_t* cond) {
+  if (pthread_cond_destroy(cond))
+    abort();
+}
+
+void uv_cond_signal(uv_cond_t* cond) {
+  if (pthread_cond_signal(cond))
+    abort();
+}
+
+void uv_cond_broadcast(uv_cond_t* cond) {
+  if (pthread_cond_broadcast(cond))
+    abort();
+}
+
+void uv_cond_wait(uv_cond_t* cond, uv_mutex_t* mutex) {
+  if (pthread_cond_wait(cond, mutex))
+    abort();
+}
+
+int uv_cond_timedwait(uv_cond_t* cond, uv_mutex_t* mutex, uint64_t timeout) {
+  int r;
+  struct timespec ts;
+  uint64_t abstime;
+
+  abstime = uv_realtime() + timeout;
+  ts.tv_sec = abstime / NANOSEC;
+  ts.tv_nsec = abstime % NANOSEC;
+  r = pthread_cond_timedwait(cond, mutex, &ts);
+  switch (r) {
+  case 0:
+    return UV_OK;
+  case ETIMEDOUT:
+    return UV_ETIMEDOUT;
+  case EINTR:
+    return UV_EINTR;
+  default:
+    abort();
+    return r;
+  }
+}

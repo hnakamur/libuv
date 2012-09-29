@@ -1800,6 +1800,26 @@ UV_EXTERN void uv_sem_post(uv_sem_t* sem);
 UV_EXTERN void uv_sem_wait(uv_sem_t* sem);
 UV_EXTERN int uv_sem_trywait(uv_sem_t* sem);
 
+/*
+ * Same goes for the condition variable functions.
+ */
+UV_EXTERN void uv_cond_init(uv_cond_t* cond);
+UV_EXTERN void uv_cond_destroy(uv_cond_t* cond);
+UV_EXTERN void uv_cond_signal(uv_cond_t* cond);
+UV_EXTERN void uv_cond_broadcast(uv_cond_t* cond);
+UV_EXTERN void uv_cond_wait(uv_cond_t* cond, uv_mutex_t* mutex);
+/*
+ * uv_cond_timedwait returns UV_OK, UV_ETIMEDOUT or UV_EINTR and aborts if
+ * other errors happen.
+ *
+ * Note: uv_cond_timedwait takes a relative timeout, not an absolute time.
+ * pthread_cond_timedwait takes an absolute time so that it is handy to
+ * call pthread_cond_timedwait in a loop. However, SleepConditionVariableCS
+ * in Windows takes an relative time.
+ */
+UV_EXTERN int uv_cond_timedwait(uv_cond_t* cond, uv_mutex_t* mutex,
+    uint64_t timeout);
+
 /* Runs a function once and only once. Concurrent calls to uv_once() with the
  * same guard will block all callers except one (it's unspecified which one).
  * The guard should be initialized statically with the UV_ONCE_INIT macro.
