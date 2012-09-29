@@ -56,6 +56,19 @@ else(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
     )
   endif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 
+  if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    set(EV_CONFIG config_darwin.h)
+    set(EIO_CONFIG config_darwin.h)
+    set(CFLAG "${CFLAG} -D_DARWIN_USE_64_BIT_INODE=1")
+    set(LINKFLAGS "${LINKFLAGS} -framework CoreServices")
+    set(SRCS
+      ${UNIX_COMMON_SRCS}
+      src/unix/darwin.c
+      src/unix/kqueue.c
+      src/unix/fsevents.c
+    )
+  endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+
   set_property(SOURCE ${SRCS} PROPERTY
     COMPILE_FLAGS "${CSTDFLAG} ${CFLAGS}")
 
@@ -71,6 +84,6 @@ else(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
                         EIO_STACKSIZE=262144
                         _GNU_SOURCE)
 
-  add_library(uv SHARED ${SRCS} ${UNIX_EV_SRC} ${UNIX_EIO_SRC})
+  add_library(uv STATIC ${SRCS} ${UNIX_EV_SRC} ${UNIX_EIO_SRC})
   set_property(TARGET uv PROPERTY LINK_FLAGS ${LINKFLAGS})
 endif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
