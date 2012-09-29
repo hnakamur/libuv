@@ -32,6 +32,9 @@ else(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
     src/unix/timer.c
     src/unix/tty.c
     src/unix/udp.c
+    src/fs-poll.c
+    src/inet.c
+    src/uv-common.c
     src/unix/uv-eio.c
   )
 
