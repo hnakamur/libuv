@@ -87,6 +87,6 @@ else(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
                         EIO_STACKSIZE=262144
                         _GNU_SOURCE)
 
-  add_library(uv STATIC ${SRCS} ${UNIX_EV_SRC} ${UNIX_EIO_SRC})
+  add_library(uv SHARED ${SRCS} ${UNIX_EV_SRC} ${UNIX_EIO_SRC})
   set_property(TARGET uv PROPERTY LINK_FLAGS ${LINKFLAGS})
 endif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
