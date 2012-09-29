@@ -41,6 +41,9 @@
 #include <sys/sysctl.h>
 #include <unistd.h>  /* sysconf */
 
+#undef NANOSEC
+#define NANOSEC ((uint64_t) 1e9)
+
 static char *process_title;
 
 /* Forward declarations */
@@ -203,6 +206,12 @@ uint64_t uv_hrtime() {
   return (*(uint64_t *)&enano);
 }
 #endif
+
+uint64_t uv_realtime() {
+  CFAbsoluteTime seconds;
+  seconds = CFAbsoluteTimeGetCurrent() + kCFAbsoluteTimeIntervalSince1970;
+  return (uint64_t)(seconds * NANOSEC);
+}
 
 int uv_exepath(char* buffer, size_t* size) {
   uint32_t usize;
