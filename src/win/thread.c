@@ -111,31 +111,40 @@ int uv_thread_join(uv_thread_t *tid) {
 
 
 int uv_mutex_init(uv_mutex_t* mutex) {
-  InitializeCriticalSection(mutex);
-  return 0;
+  *mutex = CreateMutex(NULL, FALSE, NULL);
+  return *mutex ? 0 : -1;
 }
 
 
 void uv_mutex_destroy(uv_mutex_t* mutex) {
-  DeleteCriticalSection(mutex);
+  if (!CloseHandle(*mutex))
+    abort();
 }
 
 
 void uv_mutex_lock(uv_mutex_t* mutex) {
-  EnterCriticalSection(mutex);
+  if (WaitForSingleObject(*mutex, INFINITE) != WAIT_OBJECT_0)
+    abort();
 }
 
 
 int uv_mutex_trylock(uv_mutex_t* mutex) {
-  if (TryEnterCriticalSection(mutex))
+  DWORD r = WaitForSingleObject(*mutex, 0);
+
+  if (r == WAIT_OBJECT_0)
     return 0;
-  else
+
+  if (r == WAIT_TIMEOUT)
     return -1;
+
+  abort();
+  return -1; /* Satisfy the compiler. */
 }
 
 
 void uv_mutex_unlock(uv_mutex_t* mutex) {
-  LeaveCriticalSection(mutex);
+  if (!ReleaseMutex(*mutex))
+    abort();
 }
 
 
@@ -364,4 +373,155 @@ inline static int uv__rwlock_fallback_trywrlock(uv_rwlock_t* rwlock) {
 
 inline static void uv__rwlock_fallback_wrunlock(uv_rwlock_t* rwlock) {
   uv_mutex_unlock(&rwlock->fallback_.write_mutex_);
+}
+
+
+/* This implementation is based on the SignalObjectAndWait solution
+ * (section 3.4) at
+ * http://www.cs.wustl.edu/~schmidt/win32-cv-1.html
+ * Note: uv_mutex_t must be defined as HANDLE, not CRITICAL_SECTION.
+ */
+
+void uv_cond_init(uv_cond_t* cond) {
+  cond->waiters_count = 0;
+  cond->was_broadcast = 0;
+  cond->sema = CreateSemaphore(NULL,       /* no security */
+                               0,          /* initially 0 */
+                               0x7fffffff, /* max count   */
+                               NULL);      /* unnamed     */
+  InitializeCriticalSection(&cond->waiters_count_lock);
+  cond->waiters_done = CreateEvent(NULL,  /* no security            */
+                                   FALSE, /* auto-reset             */
+                                   FALSE, /* non-signaled initially */
+                                   NULL); /* unnamed                */
+}
+
+
+void uv_cond_destroy(uv_cond_t* cond) {
+  if (!CloseHandle(cond->waiters_done))
+    abort();
+  DeleteCriticalSection(&cond->waiters_count_lock);
+  if (!CloseHandle(cond->sema))
+    abort();
+}
+
+
+void uv_cond_signal(uv_cond_t* cond) {
+  int have_waiters;
+
+  EnterCriticalSection(&cond->waiters_count_lock);
+  have_waiters = cond->waiters_count > 0;
+  LeaveCriticalSection(&cond->waiters_count_lock);
+
+  /* If there aren't any waiters, then this is a no-op. */
+  if (have_waiters)
+    ReleaseSemaphore(cond->sema, 1, 0);
+}
+
+void uv_cond_broadcast(uv_cond_t* cond) {
+  int have_waiters;
+
+  /* This is needed to ensure that <waiters_count> and <was_broadcast> are
+   * consistent relative to each other.
+   */
+  EnterCriticalSection(&cond->waiters_count_lock);
+  have_waiters = 0;
+
+  if (cond->waiters_count > 0) {
+    /* We are broadcasting, even if there is just one waiter...
+     * Record that we are broadcasting, which helps optimize
+     * <pthread_cond_wait> for the non-broadcast case.
+     */
+    cond->was_broadcast = 1;
+    have_waiters = 1;
+  }
+
+  if (have_waiters) {
+    /* Wake up all the waiters atomically. */
+    ReleaseSemaphore(cond->sema, cond->waiters_count, 0);
+
+    LeaveCriticalSection(&cond->waiters_count_lock);
+
+    /* Wait for all the awakened threads to acquire the counting
+     * semaphore.
+     */
+    WaitForSingleObject(cond->waiters_done, INFINITE);
+    /* This assignment is okay, even without the <waiters_count_lock> held
+     * because no other waiter threads can wake up to access it.
+     */
+    cond->was_broadcast = 0;
+  } else
+    LeaveCriticalSection(&cond->waiters_count_lock);
+}
+
+
+static int uv_cond_wait_helper(uv_cond_t* cond, uv_mutex_t* mutex,
+    DWORD dwMilliseconds) {
+  DWORD result;
+  int last_waiter;
+
+  /* Avoid race conditions. */
+  EnterCriticalSection(&cond->waiters_count_lock);
+  cond->waiters_count++;
+  LeaveCriticalSection(&cond->waiters_count_lock);
+
+  /* This call atomically releases the mutex and waits on the
+   * semaphore until <pthread_cond_signal> or <pthread_cond_broadcast>
+   * are called by another thread.
+   */
+  result = SignalObjectAndWait(*mutex, cond->sema, dwMilliseconds, FALSE);
+
+  /* Reacquire lock to avoid race conditions. */
+  EnterCriticalSection(&cond->waiters_count_lock);
+
+  /* We're no longer waiting... */
+  cond->waiters_count--;
+
+  /* Check to see if we're the last waiter after <pthread_cond_broadcast>. */
+  last_waiter = cond->was_broadcast && cond->waiters_count == 0;
+
+  LeaveCriticalSection(&cond->waiters_count_lock);
+
+  /* If we're the last waiter thread during this particular broadcast
+   * then let all the other threads proceed.
+   */
+  if (last_waiter) {
+    /* This call atomically signals the <waiters_done> event and waits until
+     * it can acquire the <mutex>.  This is required to ensure
+     * fairness.
+     */
+    SignalObjectAndWait(cond->waiters_done, *mutex, INFINITE, FALSE);
+  } else {
+    /* Always regain the external mutex since that's the guarantee we
+     * give to our callers.
+     */
+    WaitForSingleObject(*mutex, INFINITE);
+  }
+
+  /* See http://msdn.microsoft.com/en-us/library/windows/desktop/ms686293(v=vs.85).aspx
+   * for the return code of SignalObjectAndWait.
+   * Note: I thinks it's correct to return UV_OK for WAIT_OBJECT_0.
+   * I am not sure what to return for WAIT_ABONDONED, WAIT_IO_COMPLETION,
+   * I choosed UV_OK at this time.
+   */
+  switch (result) {
+  case WAIT_FAILED:  return UV_UNKNOWN;
+  case WAIT_TIMEOUT: return UV_ETIMEDOUT;
+  default:           return UV_OK;
+  }
+}
+
+
+void uv_cond_wait(uv_cond_t* cond, uv_mutex_t* mutex) {
+  int r;
+
+  r = uv_cond_wait_helper(cond, mutex, INFINITE);
+  if (r != UV_OK)
+    abort();
+}
+
+
+int uv_cond_timedwait(uv_cond_t* cond, uv_mutex_t* mutex,
+    uint64_t timeout) {
+  return uv_cond_wait_helper(cond, mutex, (DWORD)(timeout / 1e6));
 }

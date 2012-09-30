@@ -206,7 +206,37 @@ typedef HANDLE uv_thread_t;
 
 typedef HANDLE uv_sem_t;
 
-typedef CRITICAL_SECTION uv_mutex_t;
+typedef HANDLE uv_mutex_t;
+
+
+/* This condition variable implementation is based on the SignalObjectAndWait
+ * solution (section 3.4) at http://www.cs.wustl.edu/~schmidt/win32-cv-1.html
+ * Note we must change uv_mutex_t type from CRITICAL_SECTION to HANDLE and
+ * change implementations.
+ */
+typedef struct uv_cond_t {
+  /* Number of waiting threads. */
+  int waiters_count;
+
+  /* Serialize access to <waiters_count>. */
+  CRITICAL_SECTION waiters_count_lock;
+
+  /* Semaphore used to queue up threads waiting for the condition to
+   * become signaled.
+   */
+  HANDLE sema;
+
+  /* An auto-reset event used by the broadcast/signal thread to wait
+   * for all the waiting thread(s) to wake up and be released from the
+   * semaphore.
+   */
+  HANDLE waiters_done;
+
+  /* Keeps track of whether we were broadcasting or signaling.  This
+   * allows us to optimize the code if we're just signaling.
+   */
+  size_t was_broadcast;
+} uv_cond_t;
 
 typedef union {
   /* srwlock_ has type SRWLOCK, but not all toolchains define this type in */
