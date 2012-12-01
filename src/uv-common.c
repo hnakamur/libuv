@@ -316,7 +316,7 @@ int uv_thread_create(uv_thread_t *tid, void (*entry)(void *arg), void *arg) {
 
 uv_thread_t uv_thread_self(void) {
 #ifdef _WIN32
-  return GetCurrentThreadId();
+  return GetCurrentThread();
 #else
   return pthread_self();
 #endif
