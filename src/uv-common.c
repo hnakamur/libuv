@@ -301,8 +301,9 @@ int uv_thread_create(uv_thread_t *tid, void (*entry)(void *arg), void *arg) {
   ctx->arg = arg;
 
 #ifdef _WIN32
-  *tid = (HANDLE) _beginthreadex(NULL, 0, uv__thread_start, ctx, 0, NULL);
-  if (*tid == 0) {
+  tid->thread = (HANDLE) _beginthreadex(NULL, 0, uv__thread_start, ctx, 0,
+    &tid->thrdaddr);
+  if (tid->thread == 0) {
 #else
   if (pthread_create(tid, NULL, uv__thread_start, ctx)) {
 #endif
@@ -311,6 +312,15 @@ int uv_thread_create(uv_thread_t *tid, void (*entry)(void *arg), void *arg) {
   }
 
   return 0;
+}
+
+
+unsigned long uv_thread_id(uv_thread_t* tid) {
+#ifdef _WIN32
+  return (unsigned long) tid->thrdaddr;
+#else
+  return (unsigned long) *tid;
+#endif
 }
 
 

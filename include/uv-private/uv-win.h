@@ -211,7 +211,10 @@ typedef struct _stati64 uv_statbuf_t;
 
 typedef SOCKET uv_os_sock_t;
 
-typedef HANDLE uv_thread_t;
+typedef struct {
+  HANDLE thread;
+  unsigned thrdaddr;
+} uv_thread_t;
 
 typedef HANDLE uv_sem_t;
 

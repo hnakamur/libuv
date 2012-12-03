@@ -111,6 +111,8 @@ static void do_work(void* arg) {
   int r;
   struct test_thread* thread = arg;
 
+  ASSERT(uv_thread_id(&thread->thread_id) == uv_thread_self());
+
   loop = uv_loop_new();
   ASSERT(loop != NULL);
 

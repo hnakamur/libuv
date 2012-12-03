@@ -118,11 +118,12 @@ void uv_once(uv_once_t* guard, void (*callback)(void)) {
 
 
 int uv_thread_join(uv_thread_t *tid) {
-  if (WaitForSingleObject(*tid, INFINITE))
+  if (WaitForSingleObject(tid->thread, INFINITE))
     return -1;
   else {
-    CloseHandle(*tid);
-    *tid = 0;
+    CloseHandle(tid->thread);
+    tid->thread = 0;
+    tid->thrdaddr = 0;
     return 0;
   }
 }
