@@ -81,6 +81,7 @@ ifeq (Linux,$(uname_S))
 CSTDFLAG += -D_GNU_SOURCE
 LINKFLAGS+=-ldl -lrt
 RUNNER_CFLAGS += -D_GNU_SOURCE
+RUNNER_LINKFLAGS += -ldl -lrt
 OBJS += src/unix/linux/linux-core.o \
         src/unix/linux/inotify.o    \
         src/unix/linux/syscalls.o
